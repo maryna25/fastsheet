@@ -3,23 +3,31 @@
 
 extern crate calamine;
 
-use ruru::{Array, Class, RString, Float, Fixnum, Boolean, Object, AnyObject, NilClass};
-
+use ruru::{Array, Class, RString, Float, Fixnum, Boolean, Object, AnyObject, NilClass, VM};
 use calamine::{Sheets, DataType};
 
 pub struct Reader {
-    file: String,
+    file_name: String,
     rows: Array
 }
 
 impl Reader {
-    fn new(file: String) -> Self {
+    fn new(file_name: String) -> Self {
+        if file_name.is_empty() {
+            VM::raise(Class::from_existing("RuntimeError"), "file name can't be empty")
+        }
+
         let mut this = Reader {
-            file: file,
+            file_name: file_name,
             rows: Array::new()
         };
 
-        let sheet = Sheets::open(&this.file).unwrap().worksheet_range_by_index(0).unwrap();
+        let file = Sheets::open(&this.file_name);
+        if let Err(ref error) = file {
+            VM::raise(Class::from_existing("RuntimeError"), error.description());
+        }
+
+        let sheet = file.unwrap().worksheet_range_by_index(0).unwrap();
 
         for row in sheet.rows() {
             let mut new_row = Array::with_capacity(sheet.width());
@@ -53,9 +61,12 @@ methods!(
     Xlsx,
     itself,
 
-    fn ruby_xlsx_new(file: RString) -> AnyObject {
-        let xlsx_reader = Reader::new(file.unwrap().to_string());
+    fn ruby_xlsx_new(file_name: RString) -> AnyObject {
+        if let Err(ref error) = file_name {
+            VM::raise(Class::from_existing("RuntimeError"), "file name should be a string");
+        }
 
+        let xlsx_reader = Reader::new(file_name.unwrap().to_string());
         Class::from_existing("Xlsx").wrap_data(xlsx_reader, &*READER_WRAPPER)
     }
 
